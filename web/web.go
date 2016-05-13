@@ -53,9 +53,10 @@ var localhostRepresentations = []string{"127.0.0.1", "localhost"}
 
 // Handler serves various HTTP endpoints of the Prometheus server
 type Handler struct {
-	ruleManager *rules.Manager
-	queryEngine *promql.Engine
-	storage     local.Storage
+	targetManager *retrieval.TargetManager
+	ruleManager   *rules.Manager
+	queryEngine   *promql.Engine
+	storage       local.Storage
 
 	apiV1     *v1.API
 	apiLegacy *legacy.API
@@ -89,12 +90,6 @@ type PrometheusStatus struct {
 	Birth  time.Time
 	Flags  map[string]string
 	Config string
-
-	// A function that returns the current scrape targets pooled
-	// by their job name.
-	TargetPools func() map[string]retrieval.Targets
-	// A function that returns all loaded rules.
-	Rules func() []rules.Rule
 
 	mu sync.RWMutex
 }
@@ -133,7 +128,15 @@ type Options struct {
 }
 
 // New initializes a new web Handler.
-func New(st local.Storage, qe *promql.Engine, rm *rules.Manager, status *PrometheusStatus, version *PrometheusVersion, o *Options) *Handler {
+func New(
+	st local.Storage,
+	qe *promql.Engine,
+	tm *retrieval.TargetManager,
+	rm *rules.Manager,
+	status *PrometheusStatus,
+	version *PrometheusVersion,
+	o *Options,
+) *Handler {
 	router := route.New()
 
 	h := &Handler{
@@ -145,9 +148,10 @@ func New(st local.Storage, qe *promql.Engine, rm *rules.Manager, status *Prometh
 		statusInfo:  status,
 		versionInfo: version,
 
-		ruleManager: rm,
-		queryEngine: qe,
-		storage:     st,
+		targetManager: tm,
+		ruleManager:   rm,
+		queryEngine:   qe,
+		storage:       st,
 
 		apiV1: v1.NewAPI(qe, st),
 		apiLegacy: &legacy.API{
@@ -171,10 +175,12 @@ func New(st local.Storage, qe *promql.Engine, rm *rules.Manager, status *Prometh
 	router.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		router.Redirect(w, r, "/graph", http.StatusFound)
 	})
-	router.Get("/graph", instrf("graph", h.graph))
 
-	router.Get("/status", instrf("status", h.status))
 	router.Get("/alerts", instrf("alerts", h.alerts))
+	router.Get("/graph", instrf("graph", h.graph))
+	router.Get("/rules", instrf("rules", h.rules))
+	router.Get("/targets", instrf("targets", h.targets))
+	router.Get("/status", instrf("status", h.status))
 	router.Get("/version", instrf("version", h.version))
 
 	router.Get("/heap", instrf("heap", dumpHeap))
@@ -319,6 +325,14 @@ func (h *Handler) consoles(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) graph(w http.ResponseWriter, r *http.Request) {
 	h.executeTemplate(w, "graph.html", nil)
+}
+
+func (h *Handler) rules(w http.ResponseWriter, r *http.Request) {
+	h.executeTemplate(w, "rules.html", h.ruleManager)
+}
+
+func (h *Handler) targets(w http.ResponseWriter, r *http.Request) {
+	h.executeTemplate(w, "targets.html", h.targetManager)
 }
 
 func (h *Handler) status(w http.ResponseWriter, r *http.Request) {

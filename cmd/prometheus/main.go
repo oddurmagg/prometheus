@@ -104,10 +104,8 @@ func Main() int {
 	})
 
 	status := &web.PrometheusStatus{
-		TargetPools: targetManager.Pools,
-		Rules:       ruleManager.Rules,
-		Flags:       flags,
-		Birth:       time.Now(),
+		Flags: flags,
+		Birth: time.Now(),
 	}
 
 	version := &web.PrometheusVersion{
@@ -119,7 +117,7 @@ func Main() int {
 		GoVersion: version.GoVersion,
 	}
 
-	webHandler := web.New(memStorage, queryEngine, ruleManager, status, version, &cfg.web)
+	webHandler := web.New(memStorage, queryEngine, targetManager, ruleManager, status, version, &cfg.web)
 
 	reloadables = append(reloadables, status, targetManager, ruleManager, webHandler, notifier)
 
